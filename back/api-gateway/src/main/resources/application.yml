@@ -1,0 +1,187 @@
+spring:
+  application:
+    name: api-gateway
+
+  security:
+    user:
+      name: admin
+      password: gateway123
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins:
+              - "http://localhost:4200"
+              - "http://localhost:3000"
+              - "https://reddit-clone.com"
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+              - PATCH
+            allowed-headers: "*"
+            allow-credentials: true
+            max-age: 3600
+
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+        - name: CircuitBreaker
+          args:
+            name: defaultCircuitBreaker
+            fallbackUri: forward:/fallback
+
+      routes:
+        # Auth Service Routes
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 10
+                redis-rate-limiter.burst-capacity: 20
+                redis-rate-limiter.requested-tokens: 1
+
+        # User Service Routes
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 20
+                redis-rate-limiter.burst-capacity: 40
+                redis-rate-limiter.requested-tokens: 1
+
+        # Community Service Routes
+        - id: community-service
+          uri: lb://community-service
+          predicates:
+            - Path=/api/communities/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 15
+                redis-rate-limiter.burst-capacity: 30
+                redis-rate-limiter.requested-tokens: 1
+
+        # Post Service Routes
+        - id: post-service
+          uri: lb://post-service
+          predicates:
+            - Path=/api/posts/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 25
+                redis-rate-limiter.burst-capacity: 50
+                redis-rate-limiter.requested-tokens: 1
+
+        # Comment Service Routes
+        - id: comment-service
+          uri: lb://comment-service
+          predicates:
+            - Path=/api/comments/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 30
+                redis-rate-limiter.burst-capacity: 60
+                redis-rate-limiter.requested-tokens: 1
+
+        # Vote Service Routes
+        - id: vote-service
+          uri: lb://vote-service
+          predicates:
+            - Path=/api/votes/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 50
+                redis-rate-limiter.burst-capacity: 100
+                redis-rate-limiter.requested-tokens: 1
+
+        # Notification Service Routes
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenish-rate: 10
+                redis-rate-limiter.burst-capacity: 20
+                redis-rate-limiter.requested-tokens: 1
+
+server:
+  port: 8080
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:admin123@localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.int}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: DEBUG
+    com.redditclone.gateway: DEBUG
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      defaultCircuitBreaker:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+
+---
+# Docker Profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:admin123@eureka-server:8761/eureka/
+  instance:
+    hostname: api-gateway
